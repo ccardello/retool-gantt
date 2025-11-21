@@ -9,89 +9,89 @@
     body { 
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
       background: #fff;
+      padding: 20px;
       overflow-x: auto;
     }
-    .gantt-container {
-      position: relative;
-      padding: 20px;
+    
+    .gantt-grid {
+      display: grid;
+      grid-template-columns: 150px repeat(12, 90px);
+      gap: 0;
+      border: 1px solid #e5e7eb;
       min-width: 1200px;
     }
-    .gantt-table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-    }
-    .gantt-table th,
-    .gantt-table td {
+    
+    .gantt-cell {
       border: 1px solid #e5e7eb;
       padding: 8px;
-      text-align: center;
       font-size: 11px;
-      vertical-align: middle;
-      height: 40px;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
     }
-    .gantt-table th {
+    
+    .header-cell {
       background: #00205B;
       color: white;
       font-weight: 600;
-      white-space: nowrap;
+      position: sticky;
+      top: 0;
+      z-index: 10;
     }
-    .gantt-table th.person-col {
-      width: 150px;
-      text-align: left;
-    }
-    .gantt-table th.week-col {
-      width: 90px;
-    }
-    .gantt-table td.person {
+    
+    .person-cell {
       background: #f9fafb;
       font-weight: 500;
-      text-align: left;
+      justify-content: flex-start;
+      padding-left: 12px;
     }
-    .gantt-table td.week {
+    
+    .week-cell {
       background: #fafafa;
       cursor: pointer;
-      position: relative;
     }
-    .gantt-table td.week:hover {
+    
+    .week-cell:hover {
       background: #f0f4f8;
     }
     
     .allocation-bar {
       position: absolute;
-      height: 32px;
+      top: 4px;
+      bottom: 4px;
+      left: 4px;
+      right: 4px;
+      background: #3b82f6;
       color: white;
       font-weight: 500;
       font-size: 11px;
       display: flex;
       align-items: center;
       justify-content: center;
-      cursor: pointer;
       border-radius: 4px;
-      padding: 0 8px;
-      white-space: nowrap;
+      cursor: pointer;
+      z-index: 5;
       overflow: hidden;
       text-overflow: ellipsis;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      white-space: nowrap;
+      padding: 0 8px;
     }
+    
     .allocation-bar:hover {
       opacity: 0.9;
       box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      z-index: 100;
+      z-index: 20;
+    }
+    
+    .allocation-span {
+      grid-column: span var(--span);
     }
   </style>
 </head>
 <body>
-  <div class="gantt-container" id="ganttContainer">
-    <table class="gantt-table" id="ganttTable">
-      <thead>
-        <tr id="headerRow">
-          <th class="person-col">Person</th>
-        </tr>
-      </thead>
-      <tbody id="ganttBody"></tbody>
-    </table>
-  </div>
+  <div class="gantt-grid" id="ganttGrid"></div>
   
   <script>
     let ganttData = null;
@@ -108,123 +108,102 @@
       return null;
     }
 
-    function renderTable() {
+    function render() {
       ganttData = getData();
+      const grid = document.getElementById('ganttGrid');
+      grid.innerHTML = '';
       
       if (!ganttData || !ganttData.people || ganttData.people.length === 0) {
-        document.getElementById('ganttBody').innerHTML = 
-          '<tr><td colspan="13" style="text-align:center;padding:40px;color:#999;">No people found. Select a team.</td></tr>';
+        grid.innerHTML = '<div style="grid-column: 1 / -1; padding: 40px; text-align: center; color: #999;">No people found. Select a team.</div>';
         return;
       }
 
-      // Render header
-      const headerRow = document.getElementById('headerRow');
-      headerRow.innerHTML = '<th class="person-col">Person</th>';
+      // Header row
+      const headerPerson = document.createElement('div');
+      headerPerson.className = 'gantt-cell header-cell';
+      headerPerson.textContent = 'Person';
+      grid.appendChild(headerPerson);
+
       for (let i = 1; i <= 12; i++) {
-        const th = document.createElement('th');
-        th.className = 'week-col';
-        th.textContent = `W${i}`;
-        headerRow.appendChild(th);
+        const headerWeek = document.createElement('div');
+        headerWeek.className = 'gantt-cell header-cell';
+        headerWeek.textContent = `W${i}`;
+        grid.appendChild(headerWeek);
       }
 
-      // Render body
-      const tbody = document.getElementById('ganttBody');
-      tbody.innerHTML = '';
+      // Data rows
+      ganttData.people.forEach(person => {
+        // Person name cell
+        const personCell = document.createElement('div');
+        personCell.className = 'gantt-cell person-cell';
+        personCell.textContent = person.name;
+        grid.appendChild(personCell);
 
-      ganttData.people.forEach((person, personIndex) => {
-        const row = document.createElement('tr');
-        row.dataset.personId = person.id;
-        row.dataset.rowIndex = personIndex;
-        
-        const nameCell = document.createElement('td');
-        nameCell.className = 'person';
-        nameCell.textContent = person.name;
-        row.appendChild(nameCell);
-
+        // Week cells
         for (let week = 1; week <= 12; week++) {
-          const cell = document.createElement('td');
-          cell.className = 'week';
-          cell.dataset.personId = person.id;
-          cell.dataset.week = week;
-          cell.id = `cell-${person.id}-${week}`;
+          const weekCell = document.createElement('div');
+          weekCell.className = 'gantt-cell week-cell';
+          weekCell.dataset.personId = person.id;
+          weekCell.dataset.week = week;
           
-          cell.addEventListener('click', function() {
-            window.parent.postMessage({
-              type: 'WEEK_CELL_CLICK',
-              personId: person.id,
-              personName: person.name,
-              week: week
-            }, '*');
-          });
-          
-          row.appendChild(cell);
+          // Check if any allocation STARTS here
+          const startingAlloc = (ganttData.tasks || []).find(t => 
+            t.person_id === person.id && t.start_week === week
+          );
+
+          if (startingAlloc) {
+            // Add allocation bar
+            const bar = document.createElement('div');
+            bar.className = 'allocation-bar';
+            bar.textContent = startingAlloc.text;
+            bar.style.background = startingAlloc.project_color || '#3b82f6';
+            bar.dataset.allocId = startingAlloc.id;
+            
+            // Make the cell span multiple columns
+            weekCell.style.gridColumn = `span ${startingAlloc.duration}`;
+            
+            bar.addEventListener('click', function(e) {
+              e.stopPropagation();
+              window.parent.postMessage({
+                type: 'ALLOCATION_CLICK',
+                allocationId: startingAlloc.id,
+                projectName: startingAlloc.text
+              }, '*');
+            });
+            
+            weekCell.appendChild(bar);
+            grid.appendChild(weekCell);
+            
+            // Skip the next (duration - 1) weeks since we spanned them
+            week += startingAlloc.duration - 1;
+          } else {
+            // Check if this week is covered by an earlier allocation
+            const coveringAlloc = (ganttData.tasks || []).find(t => 
+              t.person_id === person.id && 
+              t.start_week < week && 
+              (t.start_week + t.duration) > week
+            );
+            
+            if (!coveringAlloc) {
+              // Empty cell
+              weekCell.addEventListener('click', function() {
+                window.parent.postMessage({
+                  type: 'WEEK_CELL_CLICK',
+                  personId: person.id,
+                  personName: person.name,
+                  week: week
+                }, '*');
+              });
+              
+              grid.appendChild(weekCell);
+            }
+          }
         }
-
-        tbody.appendChild(row);
       });
-    }
-
-    function renderAllocations() {
-      if (!ganttData) return;
-      
-      const container = document.getElementById('ganttContainer');
-      
-      // Remove old allocation bars
-      container.querySelectorAll('.allocation-bar').forEach(el => el.remove());
-
-      (ganttData.tasks || []).forEach(task => {
-        // Find the starting cell
-        const startCell = document.getElementById(`cell-${task.person_id}-${task.start_week}`);
-        if (!startCell) {
-          console.warn('Could not find cell for allocation:', task);
-          return;
-        }
-
-        // Get the cell's position and size
-        const cellRect = startCell.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
-        
-        // Calculate bar dimensions
-        const cellWidth = cellRect.width;
-        const barWidth = (cellWidth * task.duration) - 4;  // -4 for padding
-        const barLeft = cellRect.left - containerRect.left + 2;
-        const barTop = cellRect.top - containerRect.top + 4;
-
-        const bar = document.createElement('div');
-        bar.className = 'allocation-bar';
-        bar.textContent = task.text;
-        bar.style.position = 'absolute';
-        bar.style.left = barLeft + 'px';
-        bar.style.top = barTop + 'px';
-        bar.style.width = barWidth + 'px';
-        bar.style.background = task.project_color || '#3b82f6';
-        bar.dataset.allocId = task.id;
-
-        bar.addEventListener('click', function(e) {
-          e.stopPropagation();
-          window.parent.postMessage({
-            type: 'ALLOCATION_CLICK',
-            allocationId: task.id,
-            projectName: task.text,
-            personId: task.person_id,
-            startWeek: task.start_week,
-            duration: task.duration
-          }, '*');
-        });
-
-        container.appendChild(bar);
-      });
-    }
-
-    function render() {
-      renderTable();
-      // Delay allocation rendering to ensure DOM is ready
-      setTimeout(renderAllocations, 100);
     }
 
     window.addEventListener('hashchange', render);
     window.addEventListener('load', render);
-    window.addEventListener('resize', renderAllocations);  // Re-position on resize
     window.parent.postMessage({ type: 'GANTT_READY' }, '*');
   </script>
 </body>
