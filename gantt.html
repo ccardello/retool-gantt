@@ -14,22 +14,13 @@
     }
     
     .gantt-table {
-      display: table;
+      width: 100%;
       border-collapse: collapse;
       min-width: 1200px;
-      width: 100%;
       border: 1px solid #e5e7eb;
     }
     
-    .gantt-header {
-      display: table-row;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
-    
-    .header-cell {
-      display: table-cell;
+    .gantt-table th {
       background: #00205B;
       color: white;
       font-weight: 600;
@@ -39,57 +30,80 @@
       border: 1px solid #003082;
       position: sticky;
       top: 0;
+      z-index: 100;
     }
     
-    .header-person {
+    .gantt-table th:first-child {
       width: 150px;
       text-align: left;
       padding-left: 12px;
     }
     
-    .header-week {
+    .gantt-table th:not(:first-child) {
       width: 90px;
     }
     
-    .person-group {
-      display: table-row-group;
-    }
-    
-    .allocation-row {
-      display: table-row;
+    .gantt-table td {
+      border: 1px solid #e5e7eb;
+      padding: 0;
+      vertical-align: middle;
     }
     
     .person-cell {
-      display: table-cell;
       background: #f9fafb;
       font-weight: 600;
       padding: 12px;
-      border: 1px solid #e5e7eb;
-      vertical-align: middle;
+      text-align: left;
       width: 150px;
     }
     
-    .week-cell {
-      display: table-cell;
+    .weeks-cell {
       background: #fafafa;
-      border: 1px solid #e5e7eb;
-      min-height: 40px;
-      height: 40px;
       position: relative;
-      cursor: pointer;
-      width: 90px;
+      width: 1080px; /* 90px * 12 */
     }
     
-    .week-cell:hover {
+    .week-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 90px);
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+    }
+    
+    .week-slot {
+      border-right: 1px solid #e5e7eb;
+      cursor: pointer;
+      min-height: 40px;
+    }
+    
+    .week-slot:hover {
       background: #f0f4f8;
+    }
+    
+    .allocations-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+    }
+    
+    .allocation-track {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 36px;
+      pointer-events: none;
     }
     
     .allocation-bar {
       position: absolute;
-      top: 4px;
-      bottom: 4px;
-      left: 4px;
-      right: 4px;
+      top: 2px;
+      bottom: 2px;
       background: #3b82f6;
       color: white;
       font-weight: 500;
@@ -104,6 +118,7 @@
       white-space: nowrap;
       padding: 0 8px;
       box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+      pointer-events: auto;
     }
     
     .allocation-bar:hover {
@@ -114,10 +129,22 @@
   </style>
 </head>
 <body>
-  <div class="gantt-table" id="ganttTable"></div>
+  <table class="gantt-table" id="ganttTable">
+    <thead>
+      <tr>
+        <th>Person</th>
+        <th>W1</th><th>W2</th><th>W3</th><th>W4</th>
+        <th>W5</th><th>W6</th><th>W7</th><th>W8</th>
+        <th>W9</th><th>W10</th><th>W11</th><th>W12</th>
+      </tr>
+    </thead>
+    <tbody id="ganttBody"></tbody>
+  </table>
   
   <script>
     let ganttData = null;
+    const WEEK_WIDTH = 90;
+    const TRACK_HEIGHT = 36;
 
     function getData() {
       try {
@@ -132,168 +159,122 @@
     }
 
     function findOverlappingAllocations(allocations) {
-      // Group allocations into non-overlapping rows
-      const rows = [];
+      // Group allocations into non-overlapping tracks
+      const tracks = [];
       
       allocations.forEach(alloc => {
         let placed = false;
         
-        // Try to place in existing row
-        for (let row of rows) {
-          const overlaps = row.some(existing => 
+        // Try to place in existing track
+        for (let track of tracks) {
+          const overlaps = track.some(existing => 
             !(alloc.start_week >= existing.start_week + existing.duration || 
               alloc.start_week + alloc.duration <= existing.start_week)
           );
           
           if (!overlaps) {
-            row.push(alloc);
+            track.push(alloc);
             placed = true;
             break;
           }
         }
         
-        // Create new row if needed
+        // Create new track if needed
         if (!placed) {
-          rows.push([alloc]);
+          tracks.push([alloc]);
         }
       });
       
-      return rows;
+      return tracks;
     }
 
     function render() {
       ganttData = getData();
-      const table = document.getElementById('ganttTable');
-      table.innerHTML = '';
+      const tbody = document.getElementById('ganttBody');
+      tbody.innerHTML = '';
       
       if (!ganttData || !ganttData.people || ganttData.people.length === 0) {
-        table.innerHTML = '<div style="padding: 40px; text-align: center; color: #999;">No people found. Select a team.</div>';
+        tbody.innerHTML = '<tr><td colspan="13" style="padding: 40px; text-align: center; color: #999;">No people found. Select a team.</td></tr>';
         return;
       }
 
-      // Header row
-      const header = document.createElement('div');
-      header.className = 'gantt-header';
-      
-      const headerPerson = document.createElement('div');
-      headerPerson.className = 'header-cell header-person';
-      headerPerson.textContent = 'Person';
-      header.appendChild(headerPerson);
-      
-      for (let i = 1; i <= 12; i++) {
-        const headerWeek = document.createElement('div');
-        headerWeek.className = 'header-cell header-week';
-        headerWeek.textContent = `W${i}`;
-        header.appendChild(headerWeek);
-      }
-      table.appendChild(header);
-
-      // People rows
+      // Render each person as a single row
       ganttData.people.forEach(person => {
         const personAllocs = (ganttData.tasks || []).filter(t => t.person_id === person.id);
-        const allocRows = findOverlappingAllocations(personAllocs);
+        const tracks = findOverlappingAllocations(personAllocs);
+        const numTracks = Math.max(tracks.length, 1);
+        const rowHeight = numTracks * TRACK_HEIGHT;
         
-        // If no allocations, show one empty row
-        const numRows = allocRows.length || 1;
+        const tr = document.createElement('tr');
+        tr.style.height = `${rowHeight}px`;
         
-        const group = document.createElement('div');
-        group.className = 'person-group';
+        // Person name cell
+        const personCell = document.createElement('td');
+        personCell.className = 'person-cell';
+        personCell.textContent = person.name;
+        tr.appendChild(personCell);
         
-        allocRows.forEach((row, rowIndex) => {
-          const tr = document.createElement('div');
-          tr.className = 'allocation-row';
+        // Weeks cell (single cell spanning all 12 weeks)
+        const weeksCell = document.createElement('td');
+        weeksCell.className = 'weeks-cell';
+        weeksCell.colSpan = 12;
+        weeksCell.style.height = `${rowHeight}px`;
+        weeksCell.style.position = 'relative';
+        
+        // Week grid (for clicking empty cells)
+        const weekGrid = document.createElement('div');
+        weekGrid.className = 'week-grid';
+        for (let week = 1; week <= 12; week++) {
+          const slot = document.createElement('div');
+          slot.className = 'week-slot';
+          slot.addEventListener('click', () => {
+            window.parent.postMessage({
+              type: 'WEEK_CELL_CLICK',
+              personId: person.id,
+              personName: person.name,
+              week: week
+            }, '*');
+          });
+          weekGrid.appendChild(slot);
+        }
+        weeksCell.appendChild(weekGrid);
+        
+        // Allocations layer
+        const allocLayer = document.createElement('div');
+        allocLayer.className = 'allocations-layer';
+        
+        tracks.forEach((track, trackIndex) => {
+          const trackDiv = document.createElement('div');
+          trackDiv.className = 'allocation-track';
+          trackDiv.style.top = `${trackIndex * TRACK_HEIGHT}px`;
           
-          // Person cell (only on first row, spans all rows)
-          if (rowIndex === 0) {
-            const personCell = document.createElement('div');
-            personCell.className = 'person-cell';
-            personCell.textContent = person.name;
-            personCell.style.gridRow = `span ${numRows}`;
-            personCell.rowSpan = numRows;
-            tr.appendChild(personCell);
-          }
-          
-          // Week cells
-          for (let week = 1; week <= 12; week++) {
-            const alloc = row.find(a => a.start_week === week);
+          track.forEach(alloc => {
+            const bar = document.createElement('div');
+            bar.className = 'allocation-bar';
+            bar.textContent = alloc.text;
+            bar.style.background = alloc.project_color || '#3b82f6';
+            bar.style.left = `${(alloc.start_week - 1) * WEEK_WIDTH}px`;
+            bar.style.width = `${alloc.duration * WEEK_WIDTH - 4}px`;
+            bar.title = `${alloc.text} - Click to edit`;
             
-            if (alloc) {
-              const cell = document.createElement('div');
-              cell.className = 'week-cell';
-              cell.colSpan = alloc.duration;
-              cell.style.width = `${alloc.duration * 90}px`;
-              
-              const bar = document.createElement('div');
-              bar.className = 'allocation-bar';
-              bar.textContent = alloc.text;
-              bar.style.background = alloc.project_color || '#3b82f6';
-              bar.title = `${alloc.text} - Click to edit`;
-              
-              bar.addEventListener('click', (e) => {
-                e.stopPropagation();
-                window.parent.postMessage({
-                  type: 'ALLOCATION_CLICK',
-                  allocationId: alloc.id,
-                  projectName: alloc.text
-                }, '*');
-              });
-              
-              cell.appendChild(bar);
-              tr.appendChild(cell);
-              week += alloc.duration - 1;
-            } else {
-              // Check if covered by earlier allocation
-              const covered = row.some(a => 
-                a.start_week < week && a.start_week + a.duration > week
-              );
-              
-              if (!covered) {
-                const cell = document.createElement('div');
-                cell.className = 'week-cell';
-                cell.addEventListener('click', () => {
-                  window.parent.postMessage({
-                    type: 'WEEK_CELL_CLICK',
-                    personId: person.id,
-                    personName: person.name,
-                    week: week
-                  }, '*');
-                });
-                tr.appendChild(cell);
-              }
-            }
-          }
-          
-          group.appendChild(tr);
-        });
-        
-        // Handle empty person (no allocations)
-        if (allocRows.length === 0) {
-          const tr = document.createElement('div');
-          tr.className = 'allocation-row';
-          
-          const personCell = document.createElement('div');
-          personCell.className = 'person-cell';
-          personCell.textContent = person.name;
-          tr.appendChild(personCell);
-          
-          for (let week = 1; week <= 12; week++) {
-            const cell = document.createElement('div');
-            cell.className = 'week-cell';
-            cell.addEventListener('click', () => {
+            bar.addEventListener('click', (e) => {
+              e.stopPropagation();
               window.parent.postMessage({
-                type: 'WEEK_CELL_CLICK',
-                personId: person.id,
-                personName: person.name,
-                week: week
+                type: 'ALLOCATION_CLICK',
+                allocationId: alloc.id,
+                projectName: alloc.text
               }, '*');
             });
-            tr.appendChild(cell);
-          }
+            
+            trackDiv.appendChild(bar);
+          });
           
-          group.appendChild(tr);
-        }
+          allocLayer.appendChild(trackDiv);
+        });
         
-        table.appendChild(group);
+        weeksCell.appendChild(allocLayer);
+        tr.appendChild(weeksCell);
+        tbody.appendChild(tr);
       });
     }
 
