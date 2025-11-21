@@ -3,106 +3,204 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Retool Gantt Chart</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.css">
+  <title>Retool Resource Gantt</title>
   <style>
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body { 
-      margin: 0; 
-      padding: 20px; 
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
       background: #fff;
+      overflow-x: auto;
     }
-    .gantt-container { 
-      width: 100%; 
-      min-height: 500px;
+    .gantt-wrapper {
+      min-width: 1200px;
+      padding: 20px;
     }
-    .bar { cursor: move !important; }
-    .bar:hover { opacity: 0.9; }
+    .gantt-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .gantt-table th,
+    .gantt-table td {
+      border: 1px solid #e5e7eb;
+      padding: 8px;
+      text-align: center;
+      font-size: 11px;
+      vertical-align: middle;
+    }
+    .gantt-table th {
+      background: #00205B;
+      color: white;
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      white-space: nowrap;
+    }
+    .gantt-table th.person-col {
+      width: 150px;
+      text-align: left;
+    }
+    .gantt-table th.week-col {
+      width: 80px;
+    }
+    .gantt-table td.person {
+      background: #f9fafb;
+      font-weight: 500;
+      text-align: left;
+    }
+    .gantt-table td.week {
+      background: #fafafa;
+      cursor: pointer;
+      position: relative;
+      height: 35px;
+      padding: 2px;
+    }
+    .gantt-table td.week:hover {
+      background: #f0f4f8;
+    }
+    .allocation-bar {
+      position: absolute;
+      top: 2px;
+      bottom: 2px;
+      left: 0;
+      color: white;
+      font-weight: 500;
+      font-size: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: move;
+      border-radius: 3px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 0 4px;
+    }
+    .allocation-bar:hover {
+      opacity: 0.9;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    .resize-handle {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 8px;
+      cursor: ew-resize;
+      background: rgba(0,0,0,0.1);
+      opacity: 0;
+    }
+    .resize-handle:hover {
+      opacity: 1;
+    }
+    .resize-handle.left {
+      left: 0;
+    }
+    .resize-handle.right {
+      right: 0;
+    }
   </style>
 </head>
 <body>
-  <div class="gantt-container"></div>
+  <div class="gantt-wrapper">
+    <table class="gantt-table" id="ganttTable">
+      <thead>
+        <tr>
+          <th class="person-col">Person</th>
+        </tr>
+      </thead>
+      <tbody id="ganttBody">
+      </tbody>
+    </table>
+  </div>
   
-  <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
   <script>
-    let ganttInstance = null;
+    let ganttData = null;
 
     function getData() {
       try {
         const hash = window.location.hash.substring(1);
         if (hash) {
-          const data = JSON.parse(decodeURIComponent(hash));
-          console.log('Loaded data:', data);
-          return data;
+          return JSON.parse(decodeURIComponent(hash));
         }
       } catch (e) {
         console.error('Error parsing data:', e);
       }
-      
-      return { tasks: [], people: [] };
+      return null;
     }
 
-    function addDays(dateStr, days) {
-      const date = new Date(dateStr);
-      date.setDate(date.getDate() + days);
-      return date.toISOString().split('T')[0];
-    }
-
-    function initGantt() {
-      const data = getData();
-      const container = document.querySelector('.gantt-container');
+    function renderGantt() {
+      ganttData = getData();
       
-      if (data.tasks.length === 0) {
-        container.innerHTML = '<p style="text-align:center;color:#999;padding:40px;font-size:14px;">No allocations yet. Select a team and add projects to the Gantt.</p>';
+      if (!ganttData || !ganttData.people || ganttData.people.length === 0) {
+        document.getElementById('ganttBody').innerHTML = 
+          '<tr><td colspan="13" style="text-align:center;padding:40px;color:#999;">No data available. Select a team in Retool.</td></tr>';
         return;
       }
 
-      const tasks = data.tasks.map(t => ({
-        id: String(t.id),
-        name: `${t.text} - ${t.person_name}`,
-        start: t.start_date,
-        end: addDays(t.start_date, t.duration * 7),
-        progress: 0,
-        custom_class: 'task-bar'
-      }));
-
-      if (ganttInstance) {
-        ganttInstance.refresh(tasks);
-      } else {
-        ganttInstance = new Gantt('.gantt-container', tasks, {
-          view_mode: 'Week',
-          bar_height: 35,
-          bar_corner_radius: 3,
-          padding: 18,
-          date_format: 'YYYY-MM-DD',
-          on_click: function(task) {
-            console.log('Clicked task:', task);
-            window.parent.postMessage({
-              type: 'GANTT_TASK_CLICK',
-              taskId: task.id,
-              taskName: task.name
-            }, '*');
-          },
-          on_date_change: function(task, start, end) {
-            console.log('Dragged task:', task, start, end);
-            window.parent.postMessage({
-              type: 'GANTT_TASK_DRAG',
-              taskId: task.id,
-              start: start,
-              end: end
-            }, '*');
-          }
-        });
+      // Render header with 12 weeks
+      const headerRow = document.querySelector('thead tr');
+      headerRow.innerHTML = '<th class="person-col">Person</th>';
+      
+      // Generate week labels (simple: 1, 2, 3... 12)
+      for (let i = 1; i <= 12; i++) {
+        const th = document.createElement('th');
+        th.className = 'week-col';
+        th.textContent = `W${i}`;
+        headerRow.appendChild(th);
       }
+
+      // Render body rows
+      const tbody = document.getElementById('ganttBody');
+      tbody.innerHTML = '';
+
+      ganttData.people.forEach(person => {
+        const row = document.createElement('tr');
+        
+        // Person name cell
+        const nameCell = document.createElement('td');
+        nameCell.className = 'person';
+        nameCell.textContent = person.name;
+        row.appendChild(nameCell);
+
+        // Week cells
+        for (let week = 1; week <= 12; week++) {
+          const cell = document.createElement('td');
+          cell.className = 'week';
+          cell.dataset.personId = person.id;
+          cell.dataset.week = week;
+          
+          // Find allocations for this person/week
+          const allocations = (ganttData.tasks || []).filter(t => 
+            t.person_id === person.id &&
+            t.start_week <= week &&
+            (t.start_week + t.duration) > week
+          );
+
+          // Render allocation bars
+          allocations.forEach(alloc => {
+            if (alloc.start_week === week) {
+              // This is the starting cell for this allocation
+              const bar = document.createElement('div');
+              bar.className = 'allocation-bar';
+              bar.textContent = alloc.text;
+              bar.style.background = alloc.project_color || '#3b82f6';
+              bar.style.width = `${alloc.duration * 100}%`;
+              bar.dataset.allocId = alloc.id;
+              
+              cell.appendChild(bar);
+            }
+          });
+          
+          row.appendChild(cell);
+        }
+
+        tbody.appendChild(row);
+      });
     }
 
-    window.addEventListener('hashchange', function() {
-      console.log('Hash changed, reloading gantt');
-      initGantt();
-    });
-    
-    window.addEventListener('load', initGantt);
+    window.addEventListener('hashchange', renderGantt);
+    window.addEventListener('load', renderGantt);
     window.parent.postMessage({ type: 'GANTT_READY' }, '*');
   </script>
 </body>
