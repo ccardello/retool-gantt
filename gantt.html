@@ -130,7 +130,7 @@
 </head>
 <body>
   <table class="gantt-table" id="ganttTable">
-    <thead>
+    <thead id="ganttHeader">
       <tr>
         <th>Person</th>
         <th>W1</th><th>W2</th><th>W3</th><th>W4</th>
@@ -156,6 +156,18 @@
         console.error('Error parsing data:', e);
       }
       return null;
+    }
+
+    function renderHeader() {
+      const header = document.getElementById('ganttHeader');
+      const weekDates = ganttData.weekDates || [];
+      
+      let headerHTML = '<tr><th>Person</th>';
+      for (let i = 0; i < 12; i++) {
+        headerHTML += `<th>${weekDates[i] || `W${i+1}`}</th>`;
+      }
+      headerHTML += '</tr>';
+      header.innerHTML = headerHTML;
     }
 
     function findOverlappingAllocations(allocations) {
@@ -197,6 +209,9 @@
         tbody.innerHTML = '<tr><td colspan="13" style="padding: 40px; text-align: center; color: #999;">No people found. Select a team.</td></tr>';
         return;
       }
+
+      // Render header with dates
+      renderHeader();
 
       // Render each person as a single row
       ganttData.people.forEach(person => {
