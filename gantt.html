@@ -13,43 +13,57 @@
       overflow-x: auto;
     }
     
-    .gantt-grid {
-      display: grid;
-      grid-template-columns: 150px repeat(12, 90px);
-      gap: 0;
-      border: 1px solid #e5e7eb;
+    .gantt-wrapper {
       min-width: 1200px;
     }
     
-    .gantt-cell {
+    .person-section {
+      margin-bottom: 0;
+    }
+    
+    .person-header {
+      display: grid;
+      grid-template-columns: 150px repeat(12, 90px);
       border: 1px solid #e5e7eb;
-      padding: 8px;
-      font-size: 11px;
-      min-height: 40px;
+      border-bottom: none;
+    }
+    
+    .person-name-cell {
+      background: #f9fafb;
+      font-weight: 600;
+      padding: 12px;
+      border-right: 1px solid #e5e7eb;
       display: flex;
       align-items: center;
-      justify-content: center;
-      position: relative;
     }
     
-    .header-cell {
-      background: #00205B;
-      color: white;
-      font-weight: 600;
-      position: sticky;
-      top: 0;
-      z-index: 10;
+    .person-rows {
+      display: grid;
+      grid-template-columns: 150px repeat(12, 90px);
+      border: 1px solid #e5e7eb;
     }
     
-    .person-cell {
-      background: #f9fafb;
-      font-weight: 500;
-      justify-content: flex-start;
-      padding-left: 12px;
+    .allocation-row {
+      display: contents;
+    }
+    
+    .row-label {
+      background: #fafafa;
+      padding: 8px 12px;
+      border-right: 1px solid #e5e7eb;
+      border-top: 1px solid #e5e7eb;
+      font-size: 10px;
+      color: #6b7280;
+      display: flex;
+      align-items: center;
     }
     
     .week-cell {
       background: #fafafa;
+      border-right: 1px solid #e5e7eb;
+      border-top: 1px solid #e5e7eb;
+      min-height: 36px;
+      position: relative;
       cursor: pointer;
     }
     
@@ -88,10 +102,35 @@
     .allocation-span {
       grid-column: span var(--span);
     }
+    
+    .header-grid {
+      display: grid;
+      grid-template-columns: 150px repeat(12, 90px);
+      border: 1px solid #e5e7eb;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: white;
+    }
+    
+    .header-cell {
+      background: #00205B;
+      color: white;
+      font-weight: 600;
+      padding: 12px 8px;
+      text-align: center;
+      font-size: 11px;
+      border-right: 1px solid #003082;
+    }
+    
+    .header-cell:first-child {
+      text-align: left;
+      padding-left: 12px;
+    }
   </style>
 </head>
 <body>
-  <div class="gantt-grid" id="ganttGrid"></div>
+  <div class="gantt-wrapper" id="ganttWrapper"></div>
   
   <script>
     let ganttData = null;
@@ -108,97 +147,153 @@
       return null;
     }
 
+    function findOverlappingAllocations(allocations) {
+      // Group allocations into non-overlapping rows
+      const rows = [];
+      
+      allocations.forEach(alloc => {
+        let placed = false;
+        
+        // Try to place in existing row
+        for (let row of rows) {
+          const overlaps = row.some(existing => 
+            !(alloc.start_week >= existing.start_week + existing.duration || 
+              alloc.start_week + alloc.duration <= existing.start_week)
+          );
+          
+          if (!overlaps) {
+            row.push(alloc);
+            placed = true;
+            break;
+          }
+        }
+        
+        // Create new row if needed
+        if (!placed) {
+          rows.push([alloc]);
+        }
+      });
+      
+      return rows;
+    }
+
     function render() {
       ganttData = getData();
-      const grid = document.getElementById('ganttGrid');
-      grid.innerHTML = '';
+      const wrapper = document.getElementById('ganttWrapper');
+      wrapper.innerHTML = '';
       
       if (!ganttData || !ganttData.people || ganttData.people.length === 0) {
-        grid.innerHTML = '<div style="grid-column: 1 / -1; padding: 40px; text-align: center; color: #999;">No people found. Select a team.</div>';
+        wrapper.innerHTML = '<div style="padding: 40px; text-align: center; color: #999;">No people found. Select a team.</div>';
         return;
       }
 
-      // Header row
-      const headerPerson = document.createElement('div');
-      headerPerson.className = 'gantt-cell header-cell';
-      headerPerson.textContent = 'Person';
-      grid.appendChild(headerPerson);
-
+      // Header
+      const header = document.createElement('div');
+      header.className = 'header-grid';
+      header.innerHTML = '<div class="header-cell">Person</div>';
       for (let i = 1; i <= 12; i++) {
-        const headerWeek = document.createElement('div');
-        headerWeek.className = 'gantt-cell header-cell';
-        headerWeek.textContent = `W${i}`;
-        grid.appendChild(headerWeek);
+        header.innerHTML += `<div class="header-cell">W${i}</div>`;
       }
+      wrapper.appendChild(header);
 
-      // Data rows
+      // People sections
       ganttData.people.forEach(person => {
-        // Person name cell
-        const personCell = document.createElement('div');
-        personCell.className = 'gantt-cell person-cell';
-        personCell.textContent = person.name;
-        grid.appendChild(personCell);
-
-        // Week cells
-        for (let week = 1; week <= 12; week++) {
-          const weekCell = document.createElement('div');
-          weekCell.className = 'gantt-cell week-cell';
-          weekCell.dataset.personId = person.id;
-          weekCell.dataset.week = week;
-          
-          // Check if any allocation STARTS here
-          const startingAlloc = (ganttData.tasks || []).find(t => 
-            t.person_id === person.id && t.start_week === week
-          );
-
-          if (startingAlloc) {
-            // Add allocation bar
-            const bar = document.createElement('div');
-            bar.className = 'allocation-bar';
-            bar.textContent = startingAlloc.text;
-            bar.style.background = startingAlloc.project_color || '#3b82f6';
-            bar.dataset.allocId = startingAlloc.id;
-            
-            // Make the cell span multiple columns
-            weekCell.style.gridColumn = `span ${startingAlloc.duration}`;
-            
-            bar.addEventListener('click', function(e) {
-              e.stopPropagation();
+        const personAllocs = (ganttData.tasks || []).filter(t => t.person_id === person.id);
+        const allocRows = findOverlappingAllocations(personAllocs);
+        
+        // Person section
+        const section = document.createElement('div');
+        section.className = 'person-section';
+        
+        // Person header
+        const personHeader = document.createElement('div');
+        personHeader.className = 'person-header';
+        personHeader.innerHTML = `<div class="person-name-cell">${person.name}</div>`;
+        for (let i = 0; i < 12; i++) {
+          personHeader.innerHTML += '<div></div>';
+        }
+        section.appendChild(personHeader);
+        
+        // Allocation rows
+        const personRows = document.createElement('div');
+        personRows.className = 'person-rows';
+        
+        if (allocRows.length === 0) {
+          // Empty row
+          personRows.innerHTML = '<div class="row-label"></div>';
+          for (let week = 1; week <= 12; week++) {
+            const cell = document.createElement('div');
+            cell.className = 'week-cell';
+            cell.addEventListener('click', () => {
               window.parent.postMessage({
-                type: 'ALLOCATION_CLICK',
-                allocationId: startingAlloc.id,
-                projectName: startingAlloc.text
+                type: 'WEEK_CELL_CLICK',
+                personId: person.id,
+                personName: person.name,
+                week: week
               }, '*');
             });
-            
-            weekCell.appendChild(bar);
-            grid.appendChild(weekCell);
-            
-            // Skip the next (duration - 1) weeks since we spanned them
-            week += startingAlloc.duration - 1;
-          } else {
-            // Check if this week is covered by an earlier allocation
-            const coveringAlloc = (ganttData.tasks || []).find(t => 
-              t.person_id === person.id && 
-              t.start_week < week && 
-              (t.start_week + t.duration) > week
-            );
-            
-            if (!coveringAlloc) {
-              // Empty cell
-              weekCell.addEventListener('click', function() {
-                window.parent.postMessage({
-                  type: 'WEEK_CELL_CLICK',
-                  personId: person.id,
-                  personName: person.name,
-                  week: week
-                }, '*');
-              });
-              
-              grid.appendChild(weekCell);
-            }
+            personRows.appendChild(cell);
           }
+        } else {
+          // Render each allocation row
+          allocRows.forEach((row, rowIndex) => {
+            const rowLabel = document.createElement('div');
+            rowLabel.className = 'row-label';
+            rowLabel.textContent = rowIndex === 0 ? '' : `Row ${rowIndex + 1}`;
+            personRows.appendChild(rowLabel);
+            
+            for (let week = 1; week <= 12; week++) {
+              const alloc = row.find(a => a.start_week === week);
+              
+              if (alloc) {
+                const cell = document.createElement('div');
+                cell.className = 'week-cell';
+                cell.style.gridColumn = `span ${alloc.duration}`;
+                
+                const bar = document.createElement('div');
+                bar.className = 'allocation-bar';
+                bar.textContent = alloc.text;
+                bar.style.background = alloc.project_color || '#3b82f6';
+                bar.title = `${alloc.text} - Click to edit`;
+                
+                bar.addEventListener('click', (e) => {
+                  e.stopPropagation();
+                  window.parent.postMessage({
+                    type: 'ALLOCATION_CLICK',
+                    allocationId: alloc.id,
+                    projectName: alloc.text
+                  }, '*');
+                });
+                
+                cell.appendChild(bar);
+                personRows.appendChild(cell);
+                week += alloc.duration - 1;
+              } else {
+                // Check if covered by earlier allocation
+                const covered = row.some(a => 
+                  a.start_week < week && a.start_week + a.duration > week
+                );
+                
+                if (!covered) {
+                  const cell = document.createElement('div');
+                  cell.className = 'week-cell';
+                  cell.addEventListener('click', () => {
+                    window.parent.postMessage({
+                      type: 'WEEK_CELL_CLICK',
+                      personId: person.id,
+                      personName: person.name,
+                      week: week
+                    }, '*');
+                  });
+                  personRows.appendChild(cell);
+                }
+              }
+            }
+          });
         }
+        
+        section.appendChild(personRows);
+        wrapper.appendChild(section);
       });
     }
 
