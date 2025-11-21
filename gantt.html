@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Retool Gantt Chart</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { 
+      margin: 0; 
+      padding: 20px; 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      background: #fff;
+    }
+    .gantt-container { 
+      width: 100%; 
+      min-height: 500px;
+    }
+    .bar { cursor: move !important; }
+    .bar:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <div class="gantt-container"></div>
+  
+  <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
+  <script>
+    let ganttInstance = null;
+
+    function getData() {
+      try {
+        const hash = window.location.hash.substring(1);
+        if (hash) {
+          const data = JSON.parse(decodeURIComponent(hash));
+          console.log('Loaded data:', data);
+          return data;
+        }
+      } catch (e) {
+        console.error('Error parsing data:', e);
+      }
+      
+      return { tasks: [], people: [] };
+    }
+
+    function addDays(dateStr, days) {
+      const date = new Date(dateStr);
+      date.setDate(date.getDate() + days);
+      return date.toISOString().split('T')[0];
+    }
+
+    function initGantt() {
+      const data = getData();
+      const container = document.querySelector('.gantt-container');
+      
+      if (data.tasks.length === 0) {
+        container.innerHTML = '<p style="text-align:center;color:#999;padding:40px;font-size:14px;">No allocations yet. Select a team and add projects to the Gantt.</p>';
+        return;
+      }
+
+      const tasks = data.tasks.map(t => ({
+        id: String(t.id),
+        name: `${t.text} - ${t.person_name}`,
+        start: t.start_date,
+        end: addDays(t.start_date, t.duration * 7),
+        progress: 0,
+        custom_class: 'task-bar'
+      }));
+
+      if (ganttInstance) {
+        ganttInstance.refresh(tasks);
+      } else {
+        ganttInstance = new Gantt('.gantt-container', tasks, {
+          view_mode: 'Week',
+          bar_height: 35,
+          bar_corner_radius: 3,
+          padding: 18,
+          date_format: 'YYYY-MM-DD',
+          on_click: function(task) {
+            console.log('Clicked task:', task);
+            window.parent.postMessage({
+              type: 'GANTT_TASK_CLICK',
+              taskId: task.id,
+              taskName: task.name
+            }, '*');
+          },
+          on_date_change: function(task, start, end) {
+            console.log('Dragged task:', task, start, end);
+            window.parent.postMessage({
+              type: 'GANTT_TASK_DRAG',
+              taskId: task.id,
+              start: start,
+              end: end
+            }, '*');
+          }
+        });
+      }
+    }
+
+    window.addEventListener('hashchange', function() {
+      console.log('Hash changed, reloading gantt');
+      initGantt();
+    });
+    
+    window.addEventListener('load', initGantt);
+    window.parent.postMessage({ type: 'GANTT_READY' }, '*');
+  </script>
+</body>
+</html>
