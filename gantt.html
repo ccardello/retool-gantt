@@ -11,9 +11,10 @@
       background: #fff;
       overflow-x: auto;
     }
-    .gantt-wrapper {
-      min-width: 1200px;
+    .gantt-container {
+      position: relative;
       padding: 20px;
+      min-width: 1200px;
     }
     .gantt-table {
       width: 100%;
@@ -27,14 +28,12 @@
       text-align: center;
       font-size: 11px;
       vertical-align: middle;
+      height: 40px;
     }
     .gantt-table th {
       background: #00205B;
       color: white;
       font-weight: 600;
-      position: sticky;
-      top: 0;
-      z-index: 10;
       white-space: nowrap;
     }
     .gantt-table th.person-col {
@@ -42,7 +41,7 @@
       text-align: left;
     }
     .gantt-table th.week-col {
-      width: 80px;
+      width: 90px;
     }
     .gantt-table td.person {
       background: #f9fafb;
@@ -53,64 +52,64 @@
       background: #fafafa;
       cursor: pointer;
       position: relative;
-      height: 35px;
-      padding: 2px;
     }
     .gantt-table td.week:hover {
       background: #f0f4f8;
     }
+    
+    /* Allocation bars overlay */
+    .allocations-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
     .allocation-bar {
       position: absolute;
-      top: 2px;
-      bottom: 2px;
-      left: 0;
+      height: 32px;
       color: white;
       font-weight: 500;
-      font-size: 10px;
+      font-size: 11px;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: move;
-      border-radius: 3px;
+      border-radius: 4px;
+      padding: 0 8px;
+      pointer-events: auto;
+      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: nowrap;
-      padding: 0 4px;
     }
     .allocation-bar:hover {
       opacity: 0.9;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-    }
-    #debug {
-      position: fixed;
-      top: 10px;
-      right: 10px;
-      background: rgba(0,0,0,0.8);
-      color: white;
-      padding: 10px;
-      border-radius: 4px;
-      font-size: 10px;
-      max-width: 300px;
-      z-index: 1000;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      z-index: 20;
     }
   </style>
 </head>
 <body>
-  <div id="debug">Loading...</div>
-  <div class="gantt-wrapper">
+  <div class="gantt-container">
+    <div class="allocations-layer" id="allocationsLayer"></div>
     <table class="gantt-table" id="ganttTable">
       <thead>
-        <tr>
+        <tr id="headerRow">
           <th class="person-col">Person</th>
         </tr>
       </thead>
-      <tbody id="ganttBody">
-      </tbody>
+      <tbody id="ganttBody"></tbody>
     </table>
   </div>
   
   <script>
     let ganttData = null;
+    const WEEK_WIDTH = 90;  // Must match CSS
+    const PERSON_COL_WIDTH = 150;
+    const ROW_HEIGHT = 40;
+    const HEADER_HEIGHT = 40;
 
     function getData() {
       try {
@@ -120,35 +119,22 @@
         }
       } catch (e) {
         console.error('Error parsing data:', e);
-        document.getElementById('debug').textContent = 'Error: ' + e.message;
       }
       return null;
     }
 
-    function renderGantt() {
+    function renderTable() {
       ganttData = getData();
       
-      const debug = document.getElementById('debug');
-      
-      if (!ganttData) {
-        debug.textContent = 'No data in URL hash';
+      if (!ganttData || !ganttData.people || ganttData.people.length === 0) {
         document.getElementById('ganttBody').innerHTML = 
-          '<tr><td colspan="13" style="text-align:center;padding:40px;color:#999;">No data in URL. Check Retool connection.</td></tr>';
+          '<tr><td colspan="13" style="text-align:center;padding:40px;color:#999;">No people found. Select a team.</td></tr>';
         return;
       }
 
-      debug.textContent = `People: ${ganttData.people?.length || 0}, Tasks: ${ganttData.tasks?.length || 0}`;
-
-      if (!ganttData.people || ganttData.people.length === 0) {
-        document.getElementById('ganttBody').innerHTML = 
-          '<tr><td colspan="13" style="text-align:center;padding:40px;color:#999;">No people found. Select a team in Retool.</td></tr>';
-        return;
-      }
-
-      // Render header with 12 weeks
-      const headerRow = document.querySelector('thead tr');
+      // Render header
+      const headerRow = document.getElementById('headerRow');
       headerRow.innerHTML = '<th class="person-col">Person</th>';
-      
       for (let i = 1; i <= 12; i++) {
         const th = document.createElement('th');
         th.className = 'week-col';
@@ -156,41 +142,35 @@
         headerRow.appendChild(th);
       }
 
-      // Render body rows
+      // Render body
       const tbody = document.getElementById('ganttBody');
       tbody.innerHTML = '';
 
-      ganttData.people.forEach(person => {
+      ganttData.people.forEach((person, personIndex) => {
         const row = document.createElement('tr');
+        row.dataset.personId = person.id;
+        row.dataset.rowIndex = personIndex;
         
-        // Person name cell
         const nameCell = document.createElement('td');
         nameCell.className = 'person';
         nameCell.textContent = person.name;
         row.appendChild(nameCell);
 
-        // Week cells
         for (let week = 1; week <= 12; week++) {
           const cell = document.createElement('td');
           cell.className = 'week';
           cell.dataset.personId = person.id;
           cell.dataset.week = week;
+          cell.dataset.rowIndex = personIndex;
+          cell.dataset.colIndex = week - 1;
           
-          // Find allocations that START in this week for this person
-          const startingAllocs = (ganttData.tasks || []).filter(t => 
-            t.person_id === person.id && t.start_week === week
-          );
-
-          // Render allocation bars
-          startingAllocs.forEach(alloc => {
-            const bar = document.createElement('div');
-            bar.className = 'allocation-bar';
-            bar.textContent = alloc.text;
-            bar.style.background = alloc.project_color || '#3b82f6';
-            bar.style.width = `${alloc.duration * 100}%`;
-            bar.dataset.allocId = alloc.id;
-            
-            cell.appendChild(bar);
+          cell.addEventListener('click', function() {
+            window.parent.postMessage({
+              type: 'WEEK_CELL_CLICK',
+              personId: person.id,
+              personName: person.name,
+              week: week
+            }, '*');
           });
           
           row.appendChild(cell);
@@ -198,15 +178,53 @@
 
         tbody.appendChild(row);
       });
-      
-      // Hide debug after 3 seconds
-      setTimeout(() => {
-        debug.style.display = 'none';
-      }, 3000);
     }
 
-    window.addEventListener('hashchange', renderGantt);
-    window.addEventListener('load', renderGantt);
+    function renderAllocations() {
+      if (!ganttData) return;
+      
+      const layer = document.getElementById('allocationsLayer');
+      layer.innerHTML = '';
+
+      (ganttData.tasks || []).forEach(task => {
+        // Find the row index for this person
+        const rowIndex = ganttData.people.findIndex(p => p.id === task.person_id);
+        if (rowIndex === -1) return;
+
+        // Calculate position
+        const left = PERSON_COL_WIDTH + ((task.start_week - 1) * WEEK_WIDTH);
+        const top = HEADER_HEIGHT + (rowIndex * ROW_HEIGHT) + 4;
+        const width = task.duration * WEEK_WIDTH - 8;
+
+        const bar = document.createElement('div');
+        bar.className = 'allocation-bar';
+        bar.textContent = task.text;
+        bar.style.left = left + 'px';
+        bar.style.top = top + 'px';
+        bar.style.width = width + 'px';
+        bar.style.background = task.project_color || '#3b82f6';
+        bar.dataset.allocId = task.id;
+
+        bar.addEventListener('click', function(e) {
+          e.stopPropagation();
+          window.parent.postMessage({
+            type: 'ALLOCATION_CLICK',
+            allocationId: task.id,
+            projectName: task.text
+          }, '*');
+        });
+
+        layer.appendChild(bar);
+      });
+    }
+
+    function render() {
+      renderTable();
+      renderAllocations();
+    }
+
+    window.addEventListener('hashchange', render);
+    window.addEventListener('load', render);
     window.parent.postMessage({ type: 'GANTT_READY' }, '*');
   </script>
 </body>
