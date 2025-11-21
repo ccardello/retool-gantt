@@ -81,27 +81,22 @@
       opacity: 0.9;
       box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
-    .resize-handle {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      width: 8px;
-      cursor: ew-resize;
-      background: rgba(0,0,0,0.1);
-      opacity: 0;
-    }
-    .resize-handle:hover {
-      opacity: 1;
-    }
-    .resize-handle.left {
-      left: 0;
-    }
-    .resize-handle.right {
-      right: 0;
+    #debug {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 10px;
+      max-width: 300px;
+      z-index: 1000;
     }
   </style>
 </head>
 <body>
+  <div id="debug">Loading...</div>
   <div class="gantt-wrapper">
     <table class="gantt-table" id="ganttTable">
       <thead>
@@ -125,6 +120,7 @@
         }
       } catch (e) {
         console.error('Error parsing data:', e);
+        document.getElementById('debug').textContent = 'Error: ' + e.message;
       }
       return null;
     }
@@ -132,9 +128,20 @@
     function renderGantt() {
       ganttData = getData();
       
-      if (!ganttData || !ganttData.people || ganttData.people.length === 0) {
+      const debug = document.getElementById('debug');
+      
+      if (!ganttData) {
+        debug.textContent = 'No data in URL hash';
         document.getElementById('ganttBody').innerHTML = 
-          '<tr><td colspan="13" style="text-align:center;padding:40px;color:#999;">No data available. Select a team in Retool.</td></tr>';
+          '<tr><td colspan="13" style="text-align:center;padding:40px;color:#999;">No data in URL. Check Retool connection.</td></tr>';
+        return;
+      }
+
+      debug.textContent = `People: ${ganttData.people?.length || 0}, Tasks: ${ganttData.tasks?.length || 0}`;
+
+      if (!ganttData.people || ganttData.people.length === 0) {
+        document.getElementById('ganttBody').innerHTML = 
+          '<tr><td colspan="13" style="text-align:center;padding:40px;color:#999;">No people found. Select a team in Retool.</td></tr>';
         return;
       }
 
@@ -142,7 +149,6 @@
       const headerRow = document.querySelector('thead tr');
       headerRow.innerHTML = '<th class="person-col">Person</th>';
       
-      // Generate week labels (simple: 1, 2, 3... 12)
       for (let i = 1; i <= 12; i++) {
         const th = document.createElement('th');
         th.className = 'week-col';
@@ -170,26 +176,21 @@
           cell.dataset.personId = person.id;
           cell.dataset.week = week;
           
-          // Find allocations for this person/week
-          const allocations = (ganttData.tasks || []).filter(t => 
-            t.person_id === person.id &&
-            t.start_week <= week &&
-            (t.start_week + t.duration) > week
+          // Find allocations that START in this week for this person
+          const startingAllocs = (ganttData.tasks || []).filter(t => 
+            t.person_id === person.id && t.start_week === week
           );
 
           // Render allocation bars
-          allocations.forEach(alloc => {
-            if (alloc.start_week === week) {
-              // This is the starting cell for this allocation
-              const bar = document.createElement('div');
-              bar.className = 'allocation-bar';
-              bar.textContent = alloc.text;
-              bar.style.background = alloc.project_color || '#3b82f6';
-              bar.style.width = `${alloc.duration * 100}%`;
-              bar.dataset.allocId = alloc.id;
-              
-              cell.appendChild(bar);
-            }
+          startingAllocs.forEach(alloc => {
+            const bar = document.createElement('div');
+            bar.className = 'allocation-bar';
+            bar.textContent = alloc.text;
+            bar.style.background = alloc.project_color || '#3b82f6';
+            bar.style.width = `${alloc.duration * 100}%`;
+            bar.dataset.allocId = alloc.id;
+            
+            cell.appendChild(bar);
           });
           
           row.appendChild(cell);
@@ -197,6 +198,11 @@
 
         tbody.appendChild(row);
       });
+      
+      // Hide debug after 3 seconds
+      setTimeout(() => {
+        debug.style.display = 'none';
+      }, 3000);
     }
 
     window.addEventListener('hashchange', renderGantt);
