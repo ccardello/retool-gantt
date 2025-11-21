@@ -57,16 +57,6 @@
       background: #f0f4f8;
     }
     
-    /* Allocation bars overlay */
-    .allocations-layer {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      pointer-events: none;
-      z-index: 10;
-    }
     .allocation-bar {
       position: absolute;
       height: 32px;
@@ -76,24 +66,23 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      cursor: move;
+      cursor: pointer;
       border-radius: 4px;
       padding: 0 8px;
-      pointer-events: auto;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
     .allocation-bar:hover {
       opacity: 0.9;
       box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      z-index: 20;
+      z-index: 100;
     }
   </style>
 </head>
 <body>
-  <div class="gantt-container">
-    <div class="allocations-layer" id="allocationsLayer"></div>
+  <div class="gantt-container" id="ganttContainer">
     <table class="gantt-table" id="ganttTable">
       <thead>
         <tr id="headerRow">
@@ -106,10 +95,6 @@
   
   <script>
     let ganttData = null;
-    const WEEK_WIDTH = 90;  // Must match CSS
-    const PERSON_COL_WIDTH = 150;
-    const ROW_HEIGHT = 40;
-    const HEADER_HEIGHT = 40;
 
     function getData() {
       try {
@@ -161,8 +146,7 @@
           cell.className = 'week';
           cell.dataset.personId = person.id;
           cell.dataset.week = week;
-          cell.dataset.rowIndex = personIndex;
-          cell.dataset.colIndex = week - 1;
+          cell.id = `cell-${person.id}-${week}`;
           
           cell.addEventListener('click', function() {
             window.parent.postMessage({
@@ -183,25 +167,36 @@
     function renderAllocations() {
       if (!ganttData) return;
       
-      const layer = document.getElementById('allocationsLayer');
-      layer.innerHTML = '';
+      const container = document.getElementById('ganttContainer');
+      
+      // Remove old allocation bars
+      container.querySelectorAll('.allocation-bar').forEach(el => el.remove());
 
       (ganttData.tasks || []).forEach(task => {
-        // Find the row index for this person
-        const rowIndex = ganttData.people.findIndex(p => p.id === task.person_id);
-        if (rowIndex === -1) return;
+        // Find the starting cell
+        const startCell = document.getElementById(`cell-${task.person_id}-${task.start_week}`);
+        if (!startCell) {
+          console.warn('Could not find cell for allocation:', task);
+          return;
+        }
 
-        // Calculate position
-        const left = PERSON_COL_WIDTH + ((task.start_week - 1) * WEEK_WIDTH);
-        const top = HEADER_HEIGHT + (rowIndex * ROW_HEIGHT) + 4;
-        const width = task.duration * WEEK_WIDTH - 8;
+        // Get the cell's position and size
+        const cellRect = startCell.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        
+        // Calculate bar dimensions
+        const cellWidth = cellRect.width;
+        const barWidth = (cellWidth * task.duration) - 4;  // -4 for padding
+        const barLeft = cellRect.left - containerRect.left + 2;
+        const barTop = cellRect.top - containerRect.top + 4;
 
         const bar = document.createElement('div');
         bar.className = 'allocation-bar';
         bar.textContent = task.text;
-        bar.style.left = left + 'px';
-        bar.style.top = top + 'px';
-        bar.style.width = width + 'px';
+        bar.style.position = 'absolute';
+        bar.style.left = barLeft + 'px';
+        bar.style.top = barTop + 'px';
+        bar.style.width = barWidth + 'px';
         bar.style.background = task.project_color || '#3b82f6';
         bar.dataset.allocId = task.id;
 
@@ -210,21 +205,26 @@
           window.parent.postMessage({
             type: 'ALLOCATION_CLICK',
             allocationId: task.id,
-            projectName: task.text
+            projectName: task.text,
+            personId: task.person_id,
+            startWeek: task.start_week,
+            duration: task.duration
           }, '*');
         });
 
-        layer.appendChild(bar);
+        container.appendChild(bar);
       });
     }
 
     function render() {
       renderTable();
-      renderAllocations();
+      // Delay allocation rendering to ensure DOM is ready
+      setTimeout(renderAllocations, 100);
     }
 
     window.addEventListener('hashchange', render);
     window.addEventListener('load', render);
+    window.addEventListener('resize', renderAllocations);  // Re-position on resize
     window.parent.postMessage({ type: 'GANTT_READY' }, '*');
   </script>
 </body>
