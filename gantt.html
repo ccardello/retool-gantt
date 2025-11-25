@@ -159,17 +159,17 @@
       return null;
     }
 
-    function renderHeader() {
-      const header = document.getElementById('ganttHeader');
-      const weekDates = ganttData.weekDates || [];
-      
-      let headerHTML = '<tr><th>Person</th>';
-      for (let i = 0; i < 12; i++) {
-          headerHTML += `<th>${weekDates[i] || 'W' + (i+1)}</th>`;
-      }
-      headerHTML += '</tr>';
-      header.innerHTML = headerHTML;
-    }
+  function renderHeader(weekDates) {
+  const header = document.getElementById('ganttHeader');
+  
+  let headerHTML = '<tr><th>Person</th>';
+  for (let i = 0; i < 12; i++) {
+    const dateLabel = (weekDates && weekDates[i]) ? weekDates[i] : ('W' + (i+1));
+    headerHTML += '<th>' + dateLabel + '</th>';
+  }
+  headerHTML += '</tr>';
+  header.innerHTML = headerHTML;
+}
 
     function findOverlappingAllocations(allocations) {
       // Group allocations into non-overlapping tracks
