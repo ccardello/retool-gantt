@@ -165,7 +165,7 @@
       
       let headerHTML = '<tr><th>Person</th>';
       for (let i = 0; i < 12; i++) {
-        headerHTML += `<th>${weekDates[i] || `W${i+1}`}</th>`;
+          headerHTML += `<th>${weekDates[i] || 'W' + (i+1)}</th>`;
       }
       headerHTML += '</tr>';
       header.innerHTML = headerHTML;
