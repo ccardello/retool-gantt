@@ -177,6 +177,7 @@
       
       allocations.forEach(alloc => {
         let placed = false;
+
         
         // Try to place in existing track
         for (let track of tracks) {
@@ -212,7 +213,7 @@
       }
 
       // Render header with dates
-      renderHeader();
+      renderHeader(ganttData.weekDates);
 
       // Render each person as a single row
       ganttData.people.forEach(person => {
